@@ -1,0 +1,11 @@
+version: "3"
+
+services:
+  go-websocket:
+    build: .
+    image: go-websocket:latest
+    container_name: go-websocket-server
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
