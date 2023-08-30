@@ -5,8 +5,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	// Intervalo de envio da mensagem ping.
+	pingPeriod = (pongWait * 9) / 10
+	// Tempo que o servidor aguardará por uma mensagem pong antes de encerrar a conexão.
+	pongWait = 60 * time.Second
 )
 
 var upgrader = websocket.Upgrader{
@@ -36,9 +44,26 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-
 	client := &Client{conn: conn, group: group}
 	clients[client] = true
+
+	// Define o tempo que o servidor aguardará por uma mensagem pong antes de encerrar a conexão.
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Goroutine para enviar pings periodicamente.
+	go func() {
+		ticker := time.NewTicker(pingPeriod)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		}
+	}()
 
 	for {
 		var msg Message
@@ -73,7 +98,7 @@ func main() {
 	http.HandleFunc("/ws", handleConnections)
 	go handleMessages()
 	port := fmt.Sprintf(":%s", os.Getenv("PORT"))
-	log.Println("Servidor iniciado na porta :8080")
+	log.Println("Servidor iniciado na porta", port)
 	err := http.ListenAndServe(port, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
